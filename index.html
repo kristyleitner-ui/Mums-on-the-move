@@ -1783,37 +1783,34 @@ async function handlePostPhoto(input){
     const pp = document.getElementById('post-photo-preview');
     if(pp) pp.src = e.target.result;
     showPostStep('scanning');
-
     try {
+            const prompt = 'Please read all text in this image and transcribe it exactly as written. Do not describe the image, just copy the words you can see. If it is a RECIPE write the title, then list all ingredients with quantities, then list all method steps numbered. If it is a WORKOUT write the title then list each exercise with sets and reps. Respond with only this JSON: {"category":"recipe or workout","title":"title from image","body":"complete transcribed text"}';
       const resp = await apiFetch({
         max_tokens: 1500,
         messages: [{
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-            { type: 'text', text: 'IMPORTANT: This is an OCR task. Transcribe ALL text you can see in this image.\\n\\nDo NOT describe the image. READ and COPY the actual words.\\n\\nFor a RECIPE photo: copy every ingredient with its quantity, then copy every method step.\\nFor a WORKOUT photo: copy every exercise name, sets, reps, weights, and instructions.\\n\\nReturn ONLY this JSON with no extra text:\\n{"category":"recipe or workout","title":"the title from the image","body":"paste the complete text here exactly as written"}' }
+            { type: 'text', text: prompt }
           ]
         }]
       });
       const data   = await parseApiResponse(resp);
       const raw    = data.content.map(b => b.text || '').join('') || '{}';
       const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
-
       const pc = document.getElementById('post-category'); if(pc) pc.value = parsed.category || 'workout';
       const pt = document.getElementById('post-title');    if(pt) pt.value = parsed.title    || '';
       const pb = document.getElementById('post-body');     if(pb) pb.value = parsed.body     || '';
       const ppr = document.getElementById('post-photo-preview-review');
       if(ppr) ppr.src = e.target.result;
       showPostStep('review');
-
     } catch(err) {
-      // Still show review so they can type manually
       const ppr = document.getElementById('post-photo-preview-review');
       if(ppr) ppr.src = e.target.result;
-      const pt = document.getElementById('post-title'); if(pt) pt.value = '';
-      const pb = document.getElementById('post-body');  if(pb) pb.value = '';
+      const pt = document.getElementById('post-title'); if(pt && !pt.value) pt.value = '';
+      const pb = document.getElementById('post-body');  if(pb && !pb.value) pb.value = '';
       showPostStep('review');
-      showToast('Could not read photo — fill in manually');
+      showToast('Could not read photo - fill in manually');
     }
   };
   reader.readAsDataURL(file);
@@ -1843,7 +1840,24 @@ function postCardHTML(p){
   const container=document.createElement('div');
   container.id='post-'+p.id;
   container.className='post-card';
-  if(p.photo){const img=document.createElement('img');img.className='post-card-img';img.src=p.photo;img.alt='Post photo';container.appendChild(img);}
+  if(p.photo){
+    const img=document.createElement('img');
+    img.className='post-card-img';
+    img.src=p.photo;
+    img.alt='Post photo';
+    img.style.cursor='pointer';
+    img.addEventListener('click', function(){
+      var overlay=document.createElement('div');
+      overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:flex;align-items:center;justify-content:center;';
+      var full=document.createElement('img');
+      full.src=p.photo;
+      full.style.cssText='max-width:100%;max-height:100%;object-fit:contain;';
+      overlay.appendChild(full);
+      overlay.addEventListener('click', function(){document.body.removeChild(overlay);});
+      document.body.appendChild(overlay);
+    });
+    container.appendChild(img);
+  }
   const body=document.createElement('div');body.className='post-card-body';
   const meta=document.createElement('div');meta.className='post-card-meta';
   const runnerSpan=document.createElement('span');runnerSpan.className='sc-runner '+(p.author||'').toLowerCase();runnerSpan.textContent=p.author||'Unknown';
@@ -1860,16 +1874,30 @@ function postCardHTML(p){
   bodyText.textContent = needsExpand ? shortText : fullText;
   const readMore=document.createElement('div');
   readMore.id='rm-'+p.id;
-  readMore.style.cssText='font-size:12px;color:#185FA5;cursor:pointer;margin-top:4px;font-weight:500;padding:4px 0;';
+  readMore.style.cssText='font-size:12px;color:#185FA5;cursor:pointer;margin-top:6px;font-weight:600;padding:6px 0;-webkit-tap-highlight-color:rgba(0,0,0,0.1);';
   readMore.textContent='Read more ▾';
-  if(needsExpand){
-    readMore.style.display='block';
-    readMore.setAttribute('data-full', fullText);
-    readMore.setAttribute('data-bodyid', bodyText.id);
-    readMore.setAttribute('onclick', 'window._rmExpand(this)');
-  } else {
-    readMore.style.display='none';
-  }
+  readMore.style.display = needsExpand ? 'block' : 'none';
+  (function(bt, rm, full, short){
+    rm.addEventListener('touchend', function(e){
+      e.preventDefault();
+      if(rm.textContent.indexOf('Read more') !== -1){
+        bt.textContent = full;
+        rm.textContent = 'Show less ▴';
+      } else {
+        bt.textContent = short;
+        rm.textContent = 'Read more ▾';
+      }
+    });
+    rm.addEventListener('click', function(){
+      if(rm.textContent.indexOf('Read more') !== -1){
+        bt.textContent = full;
+        rm.textContent = 'Show less ▴';
+      } else {
+        bt.textContent = short;
+        rm.textContent = 'Read more ▾';
+      }
+    });
+  })(bodyText, readMore, fullText, shortText);
   body.appendChild(meta);body.appendChild(title);body.appendChild(bodyText);body.appendChild(readMore);
   const actions=document.createElement('div');actions.className='post-actions';
   const likeBtn=document.createElement('button');likeBtn.className='post-action-btn'+(userLiked?' liked':'');
